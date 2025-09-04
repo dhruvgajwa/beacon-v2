@@ -9,6 +9,7 @@ import type { VerifyOtpDto } from "./dto/verify-otp.dto"
 import type { NotificationsService } from "../notifications/notifications.service"
 import type { OtpRateLimitService } from "./otp-rate-limit.service"
 import type { ConfigService } from "@nestjs/config"
+import { Types } from "mongoose"
 
 @Injectable()
 export class AuthService {
@@ -49,7 +50,7 @@ export class AuthService {
     if (userAuth.otp !== verifyOtpDto.otp) throw new Error("Invalid OTP")
 
     // clear OTP
-    userAuth.otp = null
+    userAuth.otp = undefined
     await userAuth.save()
 
     const userProfile = new this.userProfileModel({
@@ -59,7 +60,7 @@ export class AuthService {
     })
     await userProfile.save()
 
-    userAuth.userProfileId = userProfile._id
+    userAuth.userProfileId = (userProfile as any)._id
     // Persist auth token per PRD
     const token = this.jwtService.sign({ sub: userAuth._id, profileId: userProfile._id })
     userAuth.authToken = token
@@ -106,7 +107,7 @@ export class AuthService {
     if (!userAuth) throw new Error("User not found")
     if (userAuth.otp !== verifyOtpDto.otp) throw new Error("Invalid OTP")
 
-    userAuth.otp = null
+    userAuth.otp = ""
 
     const userProfile = await this.userProfileModel.findOne({ userAuthId: userAuth._id })
     if (!userProfile) throw new Error("User profile not found")
@@ -137,7 +138,7 @@ export class AuthService {
     userAuth.otp = otp
     await userAuth.save()
 
-    await this.notificationsService.sendOtp(phoneNumber, otp, `resend_${type}`)
+    await this.notificationsService.sendOtp(phoneNumber, otp, type)
     await this.otpRateLimit.logSend(phoneNumber)
 
     return { message: "OTP resent successfully", userId: userAuth._id }
@@ -167,7 +168,11 @@ export class AuthService {
 
     const res = await fetch("https://control.msg91.com/api/v5/otp/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json", accept: "application/json", authkey: apiKey } as any,
+      headers: {
+        "Content-Type": "application/json",
+        accept: "application/json",
+        authkey: apiKey,
+      } as any,
       body: JSON.stringify({ token: msg91Token }),
     })
 
@@ -196,7 +201,7 @@ export class AuthService {
         userAuthId: userAuth._id,
       })
       await userProfile.save()
-      userAuth.userProfileId = userProfile._id
+      userAuth.userProfileId = (userProfile as any)._id
       await userAuth.save()
     } else if (name && !userProfile.name) {
       userProfile.name = name

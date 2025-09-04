@@ -32,7 +32,10 @@ export class ConnectionsController {
   @Post("send-request")
   async sendConnectionRequest(@Body() sendConnectionRequestDto: SendConnectionRequestDto) {
     const req = this.getRequest()
-    return this.connectionsService.sendConnectionRequest(req.user.profileId, sendConnectionRequestDto)
+    return this.connectionsService.sendConnectionRequest(
+      req.user.profileId,
+      sendConnectionRequestDto,
+    )
   }
 
   @UseGuards(JwtAuthGuard)
@@ -53,6 +56,9 @@ export class ConnectionsController {
   @UseGuards(JwtAuthGuard)
   @Post("lookup")
   async lookupContacts(@Body() body: LookupContactsDto) {
+    // Validate the DTO for null safety and data integrity
+    body.validate()
+
     const req = this.getRequest()
     return this.connectionsService.lookupContacts(req.user.profileId, body.phoneNumbers)
   }
@@ -60,9 +66,16 @@ export class ConnectionsController {
   // Update connection type
   @UseGuards(JwtAuthGuard)
   @Patch(":connectionId/type")
-  async updateConnectionType(@Param("connectionId") connectionId: string, @Body() body: { connectionType: number }) {
+  async updateConnectionType(
+    @Param("connectionId") connectionId: string,
+    @Body() body: { connectionType: number },
+  ) {
     const req = this.getRequest()
-    return this.connectionsService.updateConnectionType(req.user.profileId, connectionId, body.connectionType)
+    return this.connectionsService.updateConnectionType(
+      req.user.profileId,
+      connectionId,
+      body.connectionType,
+    )
   }
 
   // Create and accept invite link

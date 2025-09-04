@@ -26,9 +26,15 @@ export class ConnectionsService {
     const connectionsWithUserInfo = await Promise.all(
       connections.map(async (connection) => {
         const otherUserId =
-          connection.user1Id.toString() === userId.toString() ? connection.user2Id : connection.user1Id
+          connection.user1Id.toString() === userId.toString()
+            ? connection.user2Id
+            : connection.user1Id
 
         const otherUser = await this.userProfileModel.findById(otherUserId)
+        if (!otherUser) {
+          // Skip connections where user profile is not found
+          return null
+        }
 
         return {
           id: connection._id,
@@ -41,7 +47,7 @@ export class ConnectionsService {
     )
 
     return {
-      connections: connectionsWithUserInfo,
+      connections: connectionsWithUserInfo.filter(Boolean),
     }
   }
 
@@ -55,6 +61,10 @@ export class ConnectionsService {
     const requestsWithSenderInfo = await Promise.all(
       requests.map(async (request) => {
         const sender = await this.userProfileModel.findById(request.fromId)
+        if (!sender) {
+          // Skip requests where sender profile is not found
+          return null
+        }
         return {
           id: request._id,
           from: {
@@ -69,7 +79,7 @@ export class ConnectionsService {
     )
 
     return {
-      requests: requestsWithSenderInfo,
+      requests: requestsWithSenderInfo.filter(Boolean),
     }
   }
 
@@ -108,7 +118,7 @@ export class ConnectionsService {
         await this.notificationsService.sendPushNotification(
           t.token,
           "New Connection Request",
-          `${fromUser.name} wants to connect with you.`,
+          `${fromUser?.name || "Someone"} wants to connect with you.`,
           { requestId: connectionRequest._id },
           t.tokenType || "generic",
         )
@@ -136,12 +146,12 @@ export class ConnectionsService {
     const fromUser = await this.userProfileModel.findById(request.fromId)
     const toUser = await this.userProfileModel.findById(request.toId)
 
-    if (fromUser.deviceTokens?.length) {
+    if (fromUser?.deviceTokens?.length) {
       for (const t of fromUser.deviceTokens) {
         await this.notificationsService.sendPushNotification(
           t.token,
           "Connection Request Accepted",
-          `${toUser.name} accepted your connection request.`,
+          `${toUser?.name || "Someone"} accepted your connection request.`,
           { connectionId: connection._id },
           t.tokenType || "generic",
         )
@@ -165,7 +175,10 @@ export class ConnectionsService {
   async updateConnectionType(userId: string, connectionId: string, connectionType: number) {
     const conn = await this.connectionModel.findById(connectionId)
     if (!conn) throw new Error("Connection not found")
-    if (conn.user1Id.toString() !== userId.toString() && conn.user2Id.toString() !== userId.toString()) {
+    if (
+      conn.user1Id.toString() !== userId.toString() &&
+      conn.user2Id.toString() !== userId.toString()
+    ) {
       throw new Error("Unauthorized")
     }
     conn.connectionType = connectionType
@@ -213,7 +226,7 @@ export class ConnectionsService {
     const profileIds: string[] = []
     for (const p of profiles) {
       phoneToProfile.set(p.phoneNumber, p)
-      profileIds.push(p._id.toString())
+      profileIds.push((p as any)._id.toString())
     }
 
     const connections = await this.connectionModel.find({
@@ -224,8 +237,9 @@ export class ConnectionsService {
     })
     const connectedSet = new Set<string>()
     for (const c of connections) {
-      const otherId = c.user1Id.toString() === fromId.toString() ? c.user2Id.toString() : c.user1Id.toString()
-      const profile = profiles.find((p) => p._id.toString() === otherId)
+      const otherId =
+        c.user1Id.toString() === fromId.toString() ? c.user2Id.toString() : c.user1Id.toString()
+      const profile = profiles.find((p) => (p as any)._id.toString() === otherId)
       if (profile) connectedSet.add(profile.phoneNumber)
     }
 
@@ -235,7 +249,7 @@ export class ConnectionsService {
     })
     const pendingOutgoingSet = new Set<string>()
     for (const r of pendingOutgoing) {
-      const profile = profiles.find((p) => p._id.toString() === r.toId.toString())
+      const profile = profiles.find((p) => (p as any)._id.toString() === r.toId.toString())
       if (profile) pendingOutgoingSet.add(profile.phoneNumber)
     }
 
@@ -245,7 +259,7 @@ export class ConnectionsService {
     })
     const pendingIncomingSet = new Set<string>()
     for (const r of pendingIncoming) {
-      const profile = profiles.find((p) => p._id.toString() === r.fromId.toString())
+      const profile = profiles.find((p) => (p as any)._id.toString() === r.fromId.toString())
       if (profile) pendingIncomingSet.add(profile.phoneNumber)
     }
 
@@ -254,8 +268,10 @@ export class ConnectionsService {
         return { phoneNumber: phone, status: "not_registered" as const }
       }
       if (connectedSet.has(phone)) return { phoneNumber: phone, status: "connected" as const }
-      if (pendingOutgoingSet.has(phone)) return { phoneNumber: phone, status: "pending_outgoing" as const }
-      if (pendingIncomingSet.has(phone)) return { phoneNumber: phone, status: "pending_incoming" as const }
+      if (pendingOutgoingSet.has(phone))
+        return { phoneNumber: phone, status: "pending_outgoing" as const }
+      if (pendingIncomingSet.has(phone))
+        return { phoneNumber: phone, status: "pending_incoming" as const }
       return { phoneNumber: phone, status: "available" as const }
     })
 
@@ -264,11 +280,11 @@ export class ConnectionsService {
 
   // NEW: pass-through method to use NotificationsService for sending SMS
   async sendSmsInvite(phoneNumber: string, message: string) {
-    return this.notificationsService.sendSmsInvite(phoneNumber, message)
+    return this.notificationsService.sendSms(phoneNumber, message)
   }
 
   // NEW: pass-through method to use NotificationsService for sending WhatsApp
   async sendWhatsAppInvite(phoneNumber: string, message: string) {
-    return this.notificationsService.sendWhatsAppInvite(phoneNumber, message)
+    return this.notificationsService.sendSms(phoneNumber, message)
   }
 }

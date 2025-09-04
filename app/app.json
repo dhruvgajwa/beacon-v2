@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Beacon",
+    "slug": "beacon",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "READ_CONTACTS"]
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

@@ -1,0 +1,357 @@
+// backend/src/auth/auth.service.ts
+import { Injectable } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { UserAuthModel } from './user-auth.model';
+import { UserProfileModel } from '../user-profile/user-profile.model';
+
+@Injectable()
+export class AuthService {
+  constructor(private readonly jwtService: JwtService) {}
+
+  async verifyOtpSignup(userAuth: UserAuthModel, userProfile: UserProfileModel) {
+    const token = this.jwtService.sign({
+      sub: userAuth._id,
+      profileId: userProfile._id,
+    });
+
+    // Persist JWT as auth_token on user_auth for parity with PRD, and clear OTP.
+    userAuth.authToken = token;
+    userAuth.otp = null;
+    await userAuth.save();
+
+    return {
+      token,
+      user: {
+        id: userProfile._id,
+        name: userProfile.name,
+        phoneNumber: userProfile.phoneNumber,
+        profilePic: userProfile.profilePic,
+        snooze: userProfile.snooze,
+      },
+    };
+  }
+
+  async verifyOtpLogin(userAuth: UserAuthModel, userProfile: UserProfileModel) {
+    const token = this.jwtService.sign({
+      sub: userAuth._id,
+      profileId: userProfile._id,
+    });
+
+    // Rotate stored JWT and clear OTP as per PRD ("create a JWT and store it in user_account").
+    userAuth.authToken = token;
+    userAuth.otp = null;
+    await userAuth.save();
+
+    return {
+      token,
+      user: {
+        id: userProfile._id,
+        name: userProfile.name,
+        phoneNumber: userProfile.phoneNumber,
+        profilePic: userProfile.profilePic,
+        snooze: userProfile.snooze,
+      },
+    };
+  }
+}
+
+// backend/src/recon/recon.service.ts
+import { Injectable } from '@nestjs/common';
+import { ReconRequestModel } from './recon-request.model';
+import { UserProfileModel } from '../user-profile/user-profile.model';
+import { NotificationsService } from '../notifications/notifications.service';
+
+@Injectable()
+export class ReconService {
+  constructor(
+    private readonly reconRequestModel: ReconRequestModel,
+    private readonly userProfileModel: UserProfileModel,
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
+  async rejectPing(userId: string, requestId: string) {
+    const request = await this.reconRequestModel.findById(requestId);
+    if (!request) throw new Error("Request not found");
+    if (request.toId.toString() !== userId.toString()) throw new Error("Unauthorized");
+    if (request.status !== "pending") throw new Error("Request is not pending");
+
+    const fromUser = await this.userProfileModel.findById(request.fromId);
+    const toUser = await this.userProfileModel.findById(request.toId);
+    if (!fromUser || !toUser) throw new Error("User not found");
+
+    // Notify the requester that their recon request was rejected, then delete the row, per PRD.
+    if (fromUser.deviceTokens?.length) {
+      for (const t of fromUser.deviceTokens) {
+        await this.notificationsService.sendPushNotification(
+          t.token,
+          "Ping declined",
+          `${toUser.name} declined your ping.`,
+          { requestId: request._id },
+          t.tokenType || "generic",
+        );
+      }
+    }
+
+    await this.reconRequestModel.findByIdAndDelete(requestId);
+    return { message: "Ping rejected successfully" };
+  }
+}
+
+// backend/src/recon/recon.controller.ts
+import { Controller, Post, UseGuards, Body, Param, Get, Req } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ReconDto } from './dto/recon.dto';
+import { PingDto } from './dto/ping.dto';
+import { ReconService } from './recon.service';
+
+@Controller('recon')
+export class ReconController {
+  constructor(private readonly reconService: ReconService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Post()
+  async recon(@Body() reconDto: ReconDto, @Req() req) {
+    return this.reconService.recon(req.user.profileId, reconDto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('ping')
+  async ping(@Body() pingDto: PingDto, @Req() req) {
+    return this.reconService.ping(req.user.profileId, pingDto.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('accept-ping/:requestId')
+  async acceptPing(@Param('requestId') requestId: string, @Req() req) {
+    return this.reconService.acceptPing(req.user.profileId, requestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reject-ping/:requestId')
+  async rejectPing(@Param('requestId') requestId: string, @Req() req) {
+    return this.reconService.rejectPing(req.user.profileId, requestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('ping-requests')
+  async getPingRequests(@Req() req) {
+    return this.reconService.getPingRequests(req.user.profileId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('accept-recon-request')
+  async acceptReconAlias(@Body() body: { requestId: string }, @Req() req) {
+    return this.reconService.acceptPing(req.user.profileId, body.requestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reject-recon-request')
+  async rejectReconAlias(@Body() body: { requestId: string }, @Req() req) {
+    return this.reconService.rejectPing(req.user.profileId, body.requestId);
+  }
+}
+
+// backend/src/connections/connections.controller.ts
+import { Controller, Post, UseGuards, Body, Param, Req } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { SendConnectionRequestDto } from './dto/send-connection-request.dto';
+import { ConnectionsService } from './connections.service';
+
+@Controller('connections')
+export class ConnectionsController {
+  constructor(private readonly connectionsService: ConnectionsService) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Post()
+  async sendConnectionRequest(@Body() body: SendConnectionRequestDto, @Req() req) {
+    return this.connectionsService.sendConnectionRequest(req.user.profileId, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('accept-request/:requestId')
+  async acceptConnectionRequest(@Param('requestId') requestId: string, @Req() req) {
+    return this.connectionsService.acceptConnectionRequest(req.user.profileId, requestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reject-request/:requestId')
+  async rejectConnectionRequest(@Param('requestId') requestId: string, @Req() req) {
+    return this.connectionsService.rejectConnectionRequest(req.user.profileId, requestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('send-connection-request')
+  async sendConnectionRequestAlias(@Body() body: SendConnectionRequestDto, @Req() req) {
+    return this.connectionsService.sendConnectionRequest(req.user.profileId, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('accept-connection-request/:requestId')
+  async acceptConnectionRequestAlias(@Param('requestId') requestId: string, @Req() req) {
+    return this.connectionsService.acceptConnectionRequest(req.user.profileId, requestId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('reject-connection-request/:requestId')
+  async rejectConnectionRequestAlias(@Param('requestId') requestId: string, @Req() req) {
+    return this.connectionsService.rejectConnectionRequest(req.user.profileId, requestId);
+  }
+}
+
+// app/screens/main/ConnectionsScreen.tsx
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { api } from '../../utils/api';
+
+interface Connection {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  profilePic?: string;
+  connectionType?: number;
+}
+
+const ConnectionsScreen: React.FC = () => {
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [updatingConnectionId, setUpdatingConnectionId] = useState<string | null>(null);
+
+  const handleUpdateConnectionType = async (connectionId: string, connectionType: number) => {
+    try {
+      setUpdatingConnectionId(connectionId);
+      await api.patch(`/connections/${connectionId}/type`, { connectionType });
+      setConnections(prev =>
+        prev.map(c => (c.id === connectionId ? { ...c, connectionType } : c)),
+      );
+    } catch (error: any) {
+      console.error("Error updating connection type:", error);
+      Alert.alert("Error", error?.response?.data?.message || "Failed to update connection type.");
+    } finally {
+      setUpdatingConnectionId(null);
+    }
+  };
+
+  const renderConnection = ({ item }: { item: Connection }) => (
+    <View style={styles.connectionCard}>
+      <View style={styles.connectionInfo}>
+        {item.profilePic ? (
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+          </View>
+        ) : (
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+          </View>
+        )}
+        <View>
+          <Text style={styles.connectionName}>{item.name}</Text>
+          <Text style={styles.connectionPhone}>{item.phoneNumber}</Text>
+        </View>
+      </View>
+
+      {/* Segmented control */}
+      <View style={styles.segmentContainer}>
+        {[
+          { label: "Default", value: 0 },
+          { label: "Close", value: 1 },
+          { label: "Very Close", value: 2 },
+        ].map(opt => {
+          const active = (item.connectionType ?? 0) === opt.value;
+          return (
+            <TouchableOpacity
+              key={opt.value}
+              style={[styles.segment, active && styles.segmentActive]}
+              onPress={() => handleUpdateConnectionType(item.id, opt.value)}
+              disabled={updatingConnectionId === item.id}
+            >
+              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                {updatingConnectionId === item.id && active ? "..." : opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={styles.container}>
+      {connections.map(renderConnection)}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+  },
+  connectionCard: {
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  connectionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E0E0E0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 24,
+    color: '#FFFFFF',
+  },
+  connectionName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  connectionPhone: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  segmentContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    padding: 4,
+  },
+  segment: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: 'transparent',
+  },
+  segmentActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  segmentText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  segmentTextActive: {
+    color: '#4F46E5',
+    fontWeight: '600',
+  },
+});
+
+export default ConnectionsScreen;

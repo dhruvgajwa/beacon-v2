@@ -1,0 +1,340 @@
+/import { useRef } from "react"
+import { NavigationContainer } from "@react-navigation/native"
+import { SafeAreaView } from "react-native-safe-area-context"
+import { analytics } from "./services/analytics"
+import { navTheme } from "./theme"
+import { navigationRef } from "./RootNavigation"
+import { linking } from "./linking"
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native"
+import { api } from "../../services/api"
+import { useAuth } from "../../contexts/AuthContext"
+import { parsePhoneNumberFromString } from "libphonenumber-js/min"
+import { Alert } from "react-native"
+
+const DEFAULT_REGION = "IN"
+
+function normalize(input: string): string | null {
+  const trimmed = input.replace(/[^\d+]/g, "")
+  try {
+    const pn = trimmed.startsWith("+")
+      ? parsePhoneNumberFromString(trimmed)
+      : parsePhoneNumberFromString(trimmed, DEFAULT_REGION as any)
+    return pn?.isValid() ? pn.number : null
+  } catch {
+    return null
+  }
+}
+
+export default function App() {
+  const routeNameRef = useRef<string | undefined>(undefined)
+
+  return (
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      theme={navTheme}
+      onReady={() => {
+        const current = navigationRef.getCurrentRoute()
+        routeNameRef.current = current?.name
+        analytics.screenView(current?.name || "unknown").catch(() => {})
+      }}
+      onStateChange={() => {
+        const current = navigationRef.getCurrentRoute()
+        const currentName = current?.name
+        if (currentName && routeNameRef.current !== currentName) {
+          routeNameRef.current = currentName
+          analytics.screenView(currentName).catch(() => {})
+        }
+      }}
+    >
+      {/* ThemedNavContainer component here */}
+    </NavigationContainer>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  content: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  title: { fontSize: 22, fontWeight: "700", marginBottom: 8 },
+  sub: { color: "#6B7280", marginTop: 8, textAlign: "center" },
+  btn: {
+    marginTop: 16,
+    backgroundColor: "#4F46E5",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
+  btnText: { color: "#FFFFFF", fontWeight: "700" },
+})
+
+import { useEffect, useState } from "react"
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
+import { api } from "../../services/api"
+import { analytics } from "../../services/analytics"
+
+export default function AcceptInviteScreen({ route, navigation }: any) {
+  const tokenFromParams: string | undefined = route?.params?.token
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState<string>("")
+  const [ok, setOk] = useState<boolean>(false)
+
+  useEffect(() => {
+    analytics.screenView("AcceptInvite").catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    ;(async () => {
+      if (!tokenFromParams) {
+        setMessage("Invalid invite link.")
+        setOk(false)
+        setLoading(false)
+        return
+      }
+      try {
+        await analytics.track("invite_accept_start", { hasToken: !!tokenFromParams })
+        const res = await api.post("/connections/accept-invite", { token: tokenFromParams })
+        setMessage(res.data?.message || "Connected successfully via invite.")
+        setOk(true)
+        await analytics.track("invite_accept_success", { tokenProvided: !!tokenFromParams })
+      } catch (e: any) {
+        setMessage(e?.response?.data?.message || "Failed to accept invite.")
+        setOk(false)
+        await analytics.track("invite_accept_error", {
+          tokenProvided: !!tokenFromParams,
+          message: e?.response?.data?.message || "unknown",
+        })
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [tokenFromParams])
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.content}>
+        {loading ? (
+          <>
+            <ActivityIndicator size="large" color="#4F46E5" />
+            <Text style={styles.sub}>Connecting…</Text>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.title, { color: ok ? "#111827" : "#EF4444" }]}>{ok ? "Success" : "Error"}</Text>
+            <Text style={styles.sub}>{message}</Text>
+            <TouchableOpacity
+              style={styles.btn}
+              onPress={async () => {
+                await analytics.track("invite_accept_go_connections")
+                navigation.replace("Main")
+              }}
+            >
+              <Text style={styles.btnText}>Go to Connections</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  content: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  title: { fontSize: 22, fontWeight: "700", marginBottom: 8 },
+  sub: { color: "#6B7280", marginTop: 8, textAlign: "center" },
+  btn: {
+    marginTop: 16,
+    backgroundColor: "#4F46E5",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+  },
+  btnText: { color: "#FFFFFF", fontWeight: "700" },
+})
+
+import { useMemo, useState, useEffect } from "react"
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
+import { parsePhoneNumberFromString } from "libphonenumber-js/min"
+import { api } from "../../services/api"
+import { analytics } from "../../services/analytics"
+
+const DEFAULT_REGION = "IN"
+
+function normalize(input: string): string | null {
+  const trimmed = input.replace(/[^\d+]/g, "")
+  try {
+    const pn = trimmed.startsWith("+")
+      ? parsePhoneNumberFromString(trimmed)
+      : parsePhoneNumberFromString(trimmed, DEFAULT_REGION as any)
+    return pn?.isValid() ? pn.number : null
+  } catch {
+    return null
+  }
+}
+
+export default function ChangeNumberRequestScreen({ navigation }: any) {
+  const [raw, setRaw] = useState("")
+  const e164 = useMemo(() => normalize(raw), [raw])
+  const [loading, setLoading] = useState(false)
+  const canSend = !!e164
+
+  useEffect(() => {
+    analytics.screenView("ChangeNumberRequest").catch(() => {})
+  }, [])
+
+  const submit = async () => {
+    if (!e164) {
+      await analytics.track("change_number_submit_invalid", { raw })
+      return
+    }
+    try {
+      setLoading(true)
+      await analytics.track("change_number_submit", { hasE164: !!e164 })
+      await api.post("/profile/update-number", { newPhoneNumber: e164 })
+      await analytics.track("change_number_otp_sent", { phoneE164: true })
+      Alert.alert("OTP sent", "We sent an OTP to your new number.")
+      navigation.navigate("ChangeNumberVerify", { phone: e164 })
+    } catch (e: any) {
+      await analytics.track("change_number_error", { message: e?.response?.data?.message || "unknown" })
+      Alert.alert("Error", e?.response?.data?.message || "Failed to request number update.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Change Phone Number</Text>
+        <Text style={styles.sub}>Enter your new phone number. We’ll send an OTP to verify.</Text>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>New Phone Number</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="+91XXXXXXXXXX"
+            value={raw}
+            onChangeText={setRaw}
+            keyboardType="phone-pad"
+          />
+          {!!raw && !e164 && <Text style={styles.helpErr}>Enter a valid number (E.164)</Text>}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.btn, !canSend && styles.btnDisabled]}
+          onPress={submit}
+          disabled={!canSend || loading}
+        >
+          {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnText}>Send OTP</Text>}
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  content: { flex: 1, padding: 20 },
+  title: { fontSize: 22, fontWeight: "700", color: "#111827" },
+  sub: { color: "#6B7280", marginTop: 6 },
+  field: { marginTop: 20 },
+  label: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 6 },
+  input: { backgroundColor: "#F3F4F6", borderRadius: 10, padding: 12, fontSize: 16, color: "#111827" },
+  helpErr: { color: "#EF4444", marginTop: 6 },
+  btn: {
+    marginTop: 16,
+    backgroundColor: "#4F46E5",
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 10,
+  },
+  btnText: { color: "#FFFFFF", fontWeight: "700" },
+  btnDisabled: { opacity: 0.5 },
+})
+
+import { useState, useEffect } from "react"
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
+import { api } from "../../services/api"
+import { useAuth } from "../../contexts/AuthContext"
+import { analytics } from "../../services/analytics"
+
+export default function ChangeNumberVerifyScreen({ route, navigation }: any) {
+  const { updateUser } = useAuth()
+  const phone: string = route?.params?.phone
+  const [otp, setOtp] = useState("")
+  const [loading, setLoading] = useState(false)
+  const canVerify = /^\d{4,8}$/.test(otp)
+
+  useEffect(() => {
+    analytics.screenView("ChangeNumberVerify").catch(() => {})
+  }, [])
+
+  const submit = async () => {
+    try {
+      setLoading(true)
+      await analytics.track("change_number_verify_submit", { otpLength: otp.length })
+      const res = await api.post("/profile/verify-OTP-update-number", { otp })
+      const newPhone = res.data?.phoneNumber || phone
+      updateUser({ phoneNumber: newPhone })
+      await analytics.track("change_number_verify_success")
+      Alert.alert("Updated", "Your phone number has been updated.")
+      navigation.goBack()
+    } catch (e: any) {
+      await analytics.track("change_number_verify_error", { message: e?.response?.data?.message || "unknown" })
+      Alert.alert("Error", e?.response?.data?.message || "Failed to verify OTP.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <View style={styles.content}>
+        <Text style={styles.title}>Verify New Number</Text>
+        <Text style={styles.sub}>Enter the OTP sent to {phone}</Text>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>OTP</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter OTP"
+            value={otp}
+            onChangeText={setOtp}
+            keyboardType="number-pad"
+            maxLength={8}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.btn, !canVerify && styles.btnDisabled]}
+          onPress={submit}
+          disabled={!canVerify || loading}
+        >
+          {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.btnText}>Verify</Text>}
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  content: { flex: 1, padding: 20 },
+  title: { fontSize: 22, fontWeight: "700", color: "#111827" },
+  sub: { color: "#6B7280", marginTop: 6 },
+  field: { marginTop: 20 },
+  label: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 6 },
+  input: { backgroundColor: "#F3F4F6", borderRadius: 10, padding: 12, fontSize: 16, color: "#111827" },
+  btn: {
+    marginTop: 16,
+    backgroundColor: "#4F46E5",
+    paddingVertical: 12,
+    alignItems: "center",
+    borderRadius: 10,
+  },
+  btnText: { color: "#FFFFFF", fontWeight: "700" },
+  btnDisabled: { opacity: 0.5 },
+})

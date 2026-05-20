@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Alert } from "react-native"
+import { View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Alert, Platform } from "react-native"
 import * as ImagePicker from "expo-image-picker"
 import { api } from "../../services/api"
 import { analytics } from "../../services/analytics"
@@ -75,6 +75,7 @@ export default function ProfileForm({ onSaved }: Props) {
         })
         setProfilePic(data?.profilePic)
         analytics.track("photo_update_success")
+        pendo.track("profile_photo_uploaded", { platform: Platform.OS })
       }
     } catch (e: any) {
       analytics.track("photo_update_error", { code: e?.response?.status })
@@ -90,6 +91,7 @@ export default function ProfileForm({ onSaved }: Props) {
     try {
       const { data } = await api.patch("/profile/update-profile", { name, bio })
       analytics.track("profile_update_success")
+      pendo.track("profile_updated", { hasName: !!name, hasBio: !!bio, platform: Platform.OS })
       onSaved?.(data)
       Alert.alert("Saved", "Your profile has been updated.")
     } catch (e: any) {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native"
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Platform } from "react-native"
 import { analytics } from "../../services/analytics"
 import { api } from "../../services/api"
 
@@ -39,6 +39,11 @@ export default function OtpVerificationScreen({ route, navigation }: Props) {
       const endpoint = flow === "signup" ? "/auth/verify-otp-signup" : "/auth/verify-otp-login"
       const { data } = await api.post(endpoint, { userId, otp })
       analytics.track("otp_verify_success", { flow })
+      if (flow === "signup") {
+        pendo.track("signup_completed", { flow, userId: data?.user?.id, platform: Platform.OS })
+      } else {
+        pendo.track("login_completed", { flow, userId: data?.user?.id, platform: Platform.OS })
+      }
       // set user in analytics for subsequent events
       await analytics.init(data?.user?.id)
       Alert.alert("Verified", "You are logged in.")
@@ -59,6 +64,7 @@ export default function OtpVerificationScreen({ route, navigation }: Props) {
       const endpoint = flow === "signup" ? "/auth/resend-otp-signup" : "/auth/resend-otp-login"
       await api.post(endpoint, { phoneNumber: phone })
       analytics.track("otp_resend_success", { flow })
+      pendo.track("otp_resent", { flow, platform: Platform.OS })
       Alert.alert("OTP sent", "A new code has been sent.")
     } catch (e: any) {
       analytics.track("otp_resend_error", { flow, code: e?.response?.status })

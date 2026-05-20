@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert } from "react-native"
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { api } from "../../services/api"
 import { useAuth } from "../../contexts/AuthContext"
@@ -19,6 +19,7 @@ export default function ChangeNumberVerifyScreen({ route, navigation }: any) {
       const res = await api.post("/profile/verify-OTP-update-number", { otp })
       const newPhone = res.data?.phoneNumber || phone
       updateUser({ phoneNumber: newPhone })
+      pendo.track("phone_number_changed", { platform: Platform.OS })
       Alert.alert("Updated", "Your phone number has been updated.")
       navigation.goBack()
     } catch (e: any) {

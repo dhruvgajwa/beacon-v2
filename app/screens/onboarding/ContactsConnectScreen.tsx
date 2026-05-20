@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   TextInput,
   Linking,
+  Platform,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
@@ -54,6 +55,16 @@ const ContactsConnectScreen = ({ navigation }: any) => {
             }
           }
           setStatusMap(sMap)
+
+          const values = Object.values(sMap)
+          pendo.track("contacts_lookup_completed", {
+            totalContacts: stored.length,
+            connectedCount: values.filter((s) => s === "connected").length,
+            availableCount: values.filter((s) => s === "available").length,
+            notRegisteredCount: values.filter((s) => s === "not_registered").length,
+            pendingCount: values.filter((s) => s === "pending_outgoing" || s === "pending_incoming").length,
+            platform: Platform.OS,
+          })
         }
       } catch (e) {
         console.error(e)
@@ -93,6 +104,7 @@ const ContactsConnectScreen = ({ navigation }: any) => {
       const link: string = res.data.link
       const inviterName = currentUser?.name || "A friend"
       const message = `${inviterName} has requested you to use Beacon. Join here: ${link}`
+      pendo.track("invite_sent", { inviteLink: link, sendSms: true, sendWhatsApp: true, platform: Platform.OS })
 
       // Optional: also open WhatsApp as a fallback if provider not configured on backend
       const waUrl = `whatsapp://send?text=${encodeURIComponent(message)}`

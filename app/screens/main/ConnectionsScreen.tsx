@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, TextInput, Alert } from "react-native"
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, TextInput, Alert, Platform } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
 import { api } from "../../services/api"
@@ -64,6 +64,7 @@ const ConnectionsScreen = () => {
     try {
       await api.post("/connections/send-request", { phoneNumber })
       void analytics.track("connection_request_sent")
+      pendo.track("connection_request_sent", { source: "connections_screen", platform: Platform.OS })
       Alert.alert("Success", "Connection request sent successfully!")
       setPhoneNumber("")
       setIsAddModalVisible(false)
@@ -80,6 +81,7 @@ const ConnectionsScreen = () => {
     setIsLoading(true)
     try {
       await api.post(`/connections/accept-request/${requestId}`)
+      pendo.track("connection_request_accepted", { requestId, platform: Platform.OS })
       Alert.alert("Success", "Connection request accepted!")
       setConnectionRequests((prev) => prev.filter((req) => req.id !== requestId))
       fetchData()
@@ -96,6 +98,7 @@ const ConnectionsScreen = () => {
     setIsLoading(true)
     try {
       await api.post(`/connections/reject-request/${requestId}`)
+      pendo.track("connection_request_rejected", { requestId, platform: Platform.OS })
       Alert.alert("Success", "Connection request rejected")
       setConnectionRequests((prev) => prev.filter((req) => req.id !== requestId))
     } catch (error) {
@@ -108,6 +111,7 @@ const ConnectionsScreen = () => {
 
   const setType = async (connectionId: string, value: number) => {
     void analytics.track("connection_type_update", { connectionId, value })
+    pendo.track("connection_type_changed", { connectionId, connectionType: value, platform: Platform.OS })
     try {
       setUpdating((p) => ({ ...p, [connectionId]: true }))
       await api.patch(`/connections/${connectionId}/type`, { connectionType: value })

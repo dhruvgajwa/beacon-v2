@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Platform,
 } from "react-native"
 import { analytics } from "../../services/analytics"
 import { api } from "../../services/api"
@@ -59,6 +60,7 @@ export default function PingRequestsScreen() {
       // using PRD alias
       await api.post("/recon/accept-recon-request", { requestId })
       analytics.track("ping_accept_success", { requestId })
+      pendo.track("ping_accepted", { requestId, platform: Platform.OS })
       setItems((prev) => prev.filter((r) => r.id !== requestId))
       Alert.alert("Ping accepted", "They have been notified.")
     } catch (e: any) {
@@ -75,6 +77,7 @@ export default function PingRequestsScreen() {
     try {
       await api.post("/recon/reject-recon-request", { requestId })
       analytics.track("ping_reject_success", { requestId })
+      pendo.track("ping_rejected", { requestId, platform: Platform.OS })
       setItems((prev) => prev.filter((r) => r.id !== requestId))
       Alert.alert("Ping rejected", "Requester was notified.")
     } catch (e: any) {

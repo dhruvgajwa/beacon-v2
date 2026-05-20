@@ -83,6 +83,25 @@ const AppContent = () => {
       const flag = await getContactsImportedFlag()
       setContactsImported(flag)
     })()
+
+    if (isAuthenticated && user) {
+      pendo.identify({
+        visitor: {
+          id: user.id,
+          full_name: user.name,
+          phoneNumber: user.phoneNumber,
+          bio: user.bio ?? '',
+          interests: user.interests ?? [],
+          snooze: user.snooze,
+        },
+      });
+    } else {
+      pendo.initialize({
+        visitor: {
+          id: '',
+        },
+      });
+    }
   }, [isAuthenticated])
 
   useEffect(() => {

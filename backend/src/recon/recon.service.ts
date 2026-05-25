@@ -5,6 +5,7 @@ import type { ReconRequestDocument } from "./schemas/recon-request.schema"
 import type { ConnectionDocument } from "../connections/schemas/connection.schema"
 import type { NotificationsService } from "../notifications/notifications.service"
 import type { ReconDto } from "./dto/recon.dto"
+import { pendoTrack } from "../common/pendo-track"
 
 @Injectable()
 export class ReconService {
@@ -101,6 +102,15 @@ export class ReconService {
       }
     })
 
+    pendoTrack("recon_scan_completed", userId, userId, {
+      profileId: userId,
+      distance,
+      nearbyUsersCount: formattedUsers.length,
+      pingsCreated: nearbyUsers.length,
+      latitude: location[1],
+      longitude: location[0],
+    })
+
     return { nearbyUsers: formattedUsers }
   }
 
@@ -144,6 +154,13 @@ export class ReconService {
       }
     }
 
+    pendoTrack("ping_sent", fromId, fromId, {
+      profileId: fromId,
+      recipientId: toId,
+      distance: Number(distance.toFixed(2)),
+      requestId: String(reconRequest._id),
+    })
+
     return { message: "Ping sent successfully", requestId: reconRequest._id }
   }
 
@@ -179,6 +196,13 @@ export class ReconService {
       }
     }
 
+    pendoTrack("ping_accepted", userId, userId, {
+      profileId: userId,
+      senderId: String(request.fromId),
+      requestId,
+      distance: Number(distance.toFixed(2)),
+    })
+
     return { message: "Ping accepted successfully" }
   }
 
@@ -205,6 +229,12 @@ export class ReconService {
         )
       }
     }
+
+    pendoTrack("ping_rejected", userId, userId, {
+      profileId: userId,
+      senderId: String(request.fromId),
+      requestId,
+    })
 
     return { message: "Ping rejected successfully" }
   }

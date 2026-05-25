@@ -8,6 +8,7 @@ import type { UpdateProfileDto } from "./dto/update-profile.dto"
 import type { AuditLogDocument } from "../audit/schemas/audit-log.schema"
 import type { NotificationsService } from "../notifications/notifications.service"
 import type { OtpRateLimitService } from "../auth/otp-rate-limit.service"
+import { pendoTrack } from "../common/pendo-track"
 
 @Injectable()
 export class ProfileService {
@@ -55,6 +56,14 @@ export class ProfileService {
   async updateProfile(profileId: string, updateProfileDto: UpdateProfileDto) {
     const profile = await this.userProfileModel.findByIdAndUpdate(profileId, { ...updateProfileDto }, { new: true })
     if (!profile) throw new Error("Profile not found")
+
+    pendoTrack("profile_updated", profileId, profileId, {
+      profileId,
+      updatedFields: Object.keys(updateProfileDto).join(","),
+      hasBio: !!profile.bio,
+      interestsCount: profile.interests?.length || 0,
+    })
+
     return {
       id: profile._id,
       name: profile.name,
@@ -75,12 +84,25 @@ export class ProfileService {
       { new: true },
     )
     if (!profile) throw new Error("Profile not found")
+
+    pendoTrack("profile_photo_uploaded", profileId, profileId, {
+      profileId,
+      fileType: file.mimetype || "unknown",
+      fileSize: file.size || 0,
+    })
+
     return { profilePic: profile.profilePic }
   }
 
   async toggleSnooze(profileId: string, snooze: boolean) {
     const profile = await this.userProfileModel.findByIdAndUpdate(profileId, { snooze }, { new: true })
     if (!profile) throw new Error("Profile not found")
+
+    pendoTrack("snooze_toggled", profileId, profileId, {
+      profileId,
+      snoozeEnabled: snooze,
+    })
+
     return { snooze: profile.snooze }
   }
 
@@ -97,6 +119,12 @@ export class ProfileService {
     profile.lastLocation = { type: "Point", coordinates: location }
     profile.updatedAt = new Date()
     await profile.save()
+
+    pendoTrack("location_updated", profileId, profileId, {
+      profileId,
+      distanceMovedKm: Number(movedKm.toFixed(3)),
+      accuracy: accuracy || null,
+    })
 
     return { ok: true }
   }
@@ -117,6 +145,12 @@ export class ProfileService {
         profile.deviceTokens.push({ token: endpointArn, platform, tokenType: "sns", createdAt: new Date() })
         await profile.save()
       }
+      pendoTrack("device_token_registered", profileId, profileId, {
+        profileId,
+        platform,
+        tokenType: "sns",
+      })
+
       return { ok: true, tokenType: "sns" }
     } else {
       const exists = profile.deviceTokens.some((t) => t.token === token)
@@ -124,6 +158,13 @@ export class ProfileService {
         profile.deviceTokens.push({ token, platform, tokenType: tokenType || "generic", createdAt: new Date() })
         await profile.save()
       }
+
+      pendoTrack("device_token_registered", profileId, profileId, {
+        profileId,
+        platform,
+        tokenType: tokenType || "generic",
+      })
+
       return { ok: true }
     }
   }
@@ -137,6 +178,12 @@ export class ProfileService {
     // TODO: delete S3 objects owned by user (future low-priority)
     await this.userProfileModel.findByIdAndDelete(profileId)
     await this.userAuthModel.findByIdAndDelete(authId)
+
+    pendoTrack("account_deleted", profileId, profileId, {
+      profileId,
+      authId,
+    })
+
     return { message: "Profile deleted successfully" }
   }
 
@@ -144,6 +191,11 @@ export class ProfileService {
     await this.connectionModel.deleteMany({ $or: [{ user1Id: profileId }, { user2Id: profileId }] })
     await this.connectionRequestModel.deleteMany({ $or: [{ fromId: profileId }, { toId: profileId }] })
     await this.reconRequestModel.deleteMany({ $or: [{ fromId: profileId }, { toId: profileId }] })
+
+    pendoTrack("data_cleared", profileId, profileId, {
+      profileId,
+    })
+
     return { message: "Data cleared successfully" }
   }
 
@@ -157,6 +209,14 @@ export class ProfileService {
       .lean()
     const pings = await this.reconRequestModel.find({ $or: [{ fromId: profileId }, { toId: profileId }] }).lean()
     const audits = await this.auditLogModel.find({ userAuthId: authId }).lean()
+
+    pendoTrack("data_exported", profileId, profileId, {
+      profileId,
+      connectionsCount: connections.length,
+      requestsCount: requests.length,
+      pingsCount: pings.length,
+      auditsCount: audits.length,
+    })
 
     return { profile, connections, requests, pings, audits }
   }
@@ -221,6 +281,11 @@ export class ProfileService {
       userAuthId: auth._id,
       action: "verify_phone_update",
       metadata: { newPhoneNumber: newPhone },
+    })
+
+    pendoTrack("phone_number_updated", String(auth.userProfileId || "system"), String(auth.userProfileId || "system"), {
+      profileId: String(auth.userProfileId || "system"),
+      authId,
     })
 
     return { message: "Phone number updated successfully", phoneNumber: newPhone }

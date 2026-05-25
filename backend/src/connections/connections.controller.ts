@@ -3,6 +3,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard"
 import type { SendConnectionRequestDto } from "./dto/send-connection-request.dto"
 import type { LookupContactsDto } from "./dto/lookup-contacts.dto"
 import type { ConfigService } from "@nestjs/config"
+import { pendoTrack } from "../common/pendo-track"
 
 @Controller("connections")
 export class ConnectionsController {
@@ -110,6 +111,14 @@ export class ConnectionsController {
     if (sendWhatsApp) {
       await this.connectionsService.sendWhatsAppInvite(phoneNumber, message)
     }
+
+    const channelCount = (sendSms ? 1 : 0) + (sendWhatsApp ? 1 : 0)
+    pendoTrack("invite_sent", req.user.profileId, req.user.profileId, {
+      profileId: req.user.profileId,
+      sentViaSms: !!sendSms,
+      sentViaWhatsApp: !!sendWhatsApp,
+      channelCount,
+    })
 
     return { link, token, sentSms: !!sendSms, sentWhatsApp: !!sendWhatsApp }
   }

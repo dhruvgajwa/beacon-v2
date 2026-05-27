@@ -1,5 +1,5 @@
 export type RootParamList = {
-  LoginNative: undefined
+  LoginNative: { source?: string } | undefined
   CreateProfile: undefined
   ImportContacts: undefined
   ContactsConnect: undefined

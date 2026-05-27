@@ -38,6 +38,10 @@ const linking: LinkingOptions<RootParamList> = {
   prefixes: ["https://beacon.app", "beacon://"],
   config: {
     screens: {
+      LoginNative: {
+        path: "event/:eventId",
+        parse: { source: () => "see_on_other_device" },
+      },
       AcceptInvite: { path: "invite", parse: { token: (t: any) => String(t) } },
     },
   },

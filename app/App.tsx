@@ -10,7 +10,7 @@ import type React from "react"
 
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { SafeAreaProvider } from "react-native-safe-area-context"
-import { StatusBar } from "react-native"
+import { Linking, StatusBar } from "react-native"
 import * as Notifications from "expo-notifications"
 import type { RootParamList } from "./types/navigation"
 import { analytics } from "./services/analytics"
@@ -26,7 +26,7 @@ import MainTabNavigator from "./navigation/MainTabNavigator"
 import { AuthProvider, useAuth } from "./contexts/AuthContext"
 import ImportContactsScreen from "./screens/onboarding/ImportContactsScreen"
 import ContactsConnectScreen from "./screens/onboarding/ContactsConnectScreen"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { getContactsImportedFlag } from "./services/contacts"
 import { registerForPushNotificationsAsync } from "./services/push"
 import { navigationRef } from "./navigation/navigation"
@@ -76,6 +76,33 @@ function ThemedNavContainer({ children }: { children: React.ReactNode }) {
 const AppContent = () => {
   const { isAuthenticated, isLoading, user } = useAuth()
   const [contactsImported, setContactsImported] = useState<boolean | null>(null)
+  const authEntryRouteRef = useRef<string | null>(null)
+
+  // Track the route that triggered the auth flow
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // When transitioning to unauthenticated (e.g. sign-out), capture the current route
+      const currentRoute = navigationRef.getCurrentRoute()?.name ?? null
+      if (currentRoute && currentRoute !== 'LoginNative') {
+        authEntryRouteRef.current = currentRoute
+      } else {
+        // On cold start or already on login, check for a pending deep link
+        Linking.getInitialURL().then((url) => {
+          if (url && url.includes('/invite')) {
+            authEntryRouteRef.current = 'AcceptInvite'
+          }
+        })
+      }
+
+      // Listen for deep links arriving while unauthenticated
+      const sub = Linking.addEventListener('url', ({ url }) => {
+        if (url.includes('/invite')) {
+          authEntryRouteRef.current = 'AcceptInvite'
+        }
+      })
+      return () => sub.remove()
+    }
+  }, [isAuthenticated])
 
   useEffect(() => {
     void analytics.init(user?.id)
@@ -93,6 +120,7 @@ const AppContent = () => {
           bio: user.bio ?? '',
           interests: user.interests ?? [],
           snooze: user.snooze,
+          authEntryRoute: authEntryRouteRef.current,
         },
       });
     } else {

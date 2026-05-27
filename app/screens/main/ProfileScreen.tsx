@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Image,
   Share,
+  Platform,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons"
@@ -42,6 +43,7 @@ const ProfileScreen = ({ navigation }: any) => {
       await api.post("/profile/snooze", { snooze: newSnoozeValue })
       setIsSnoozeEnabled(newSnoozeValue)
       updateUser({ ...user, snooze: newSnoozeValue } as any)
+      pendo.track("snooze_toggled", { snoozeEnabled: newSnoozeValue, platform: Platform.OS })
     } catch {
       Alert.alert("Error", "Failed to update snooze setting. Please try again.")
       setIsSnoozeEnabled(isSnoozeEnabled)
@@ -56,6 +58,7 @@ const ProfileScreen = ({ navigation }: any) => {
       const res = await api.get("/profile/export")
       const text = JSON.stringify(res.data, null, 2)
       await Share.share({ message: text })
+      pendo.track("user_data_exported", { platform: Platform.OS })
     } catch {
       Alert.alert("Error", "Failed to export data.")
     } finally {
@@ -73,6 +76,7 @@ const ProfileScreen = ({ navigation }: any) => {
           try {
             setIsLoading(true)
             await api.post("/profile/clear-data")
+            pendo.track("user_data_cleared", { platform: Platform.OS })
             Alert.alert("Done", "Your data has been cleared.")
           } catch {
             Alert.alert("Error", "Failed to clear data.")

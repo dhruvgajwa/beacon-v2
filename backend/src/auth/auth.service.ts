@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common"
 import type { Model } from "mongoose"
+import { pendoTrack } from "../common/pendo-track"
 import type { JwtService } from "@nestjs/jwt"
 import type { UserAuthDocument } from "./schemas/user-auth.schema"
 import type { UserProfileDocument } from "../profile/schemas/user-profile.schema"
@@ -66,6 +67,8 @@ export class AuthService {
     userAuth.authToken = token
     await userAuth.save()
 
+    pendoTrack("user_signed_up", String(userAuth._id), String(userProfile._id), { userId: String(userAuth._id), profileId: String(userProfile._id), hasName: !!userAuth.name, signupMethod: "otp" })
+
     return {
       token,
       user: {
@@ -116,6 +119,8 @@ export class AuthService {
     userAuth.authToken = token // rotate stored JWT per PRD [^2]
     await userAuth.save()
 
+    pendoTrack("user_logged_in", String(userAuth._id), String(userProfile._id), { userId: String(userAuth._id), profileId: String(userProfile._id), loginMethod: "otp" })
+
     return {
       token,
       user: {
@@ -140,6 +145,8 @@ export class AuthService {
 
     await this.notificationsService.sendOtp(phoneNumber, otp, type)
     await this.otpRateLimit.logSend(phoneNumber)
+
+    pendoTrack("otp_resent", String(userAuth._id), "system", { userId: String(userAuth._id), otpPurpose: type })
 
     return { message: "OTP resent successfully", userId: userAuth._id }
   }
@@ -211,6 +218,9 @@ export class AuthService {
     const token = this.jwtService.sign({ sub: userAuth._id, profileId: userProfile._id })
     userAuth.authToken = token // persist to user_auth per PRD [^2]
     await userAuth.save()
+
+    const isNewUser = !userProfile.name || userProfile.name === "User"
+    pendoTrack("msg91_auth_completed", String(userAuth._id), String(userProfile._id), { userId: String(userAuth._id), profileId: String(userProfile._id), isNewUser, hasName: !!name })
 
     return {
       token,

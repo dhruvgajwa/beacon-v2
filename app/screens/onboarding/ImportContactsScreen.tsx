@@ -20,6 +20,7 @@ const ImportContactsScreen = ({ navigation }: any) => {
       }
       const contacts = await loadDeviceContacts()
       await saveContacts(contacts)
+      pendo.track("contacts_imported", { contactsCount: contacts.length, permissionGranted: true, platform: Platform.OS })
       navigation.replace("ContactsConnect")
     } catch (err) {
       console.error(err)

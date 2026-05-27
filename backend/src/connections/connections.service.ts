@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common"
 import type { Model } from "mongoose"
+import { pendoTrack } from "../common/pendo-track"
 import type { ConnectionDocument } from "./schemas/connection.schema"
 import type { ConnectionRequestDocument } from "./schemas/connection-request.schema"
 import type { UserProfileDocument } from "../profile/schemas/user-profile.schema"
@@ -125,6 +126,8 @@ export class ConnectionsService {
       }
     }
 
+    pendoTrack("connection_request_sent", fromId, fromId, { profileId: fromId, recipientId: String(toUser._id), requestId: String(connectionRequest._id) })
+
     return { message: "Connection request sent successfully", requestId: connectionRequest._id }
   }
 
@@ -158,6 +161,8 @@ export class ConnectionsService {
       }
     }
 
+    pendoTrack("connection_request_accepted", userId, userId, { profileId: userId, senderId: String(request.fromId), connectionId: String(connection._id), requestId })
+
     return { message: "Connection request accepted successfully", connectionId: connection._id }
   }
 
@@ -167,6 +172,8 @@ export class ConnectionsService {
     if (request.toId.toString() !== userId.toString()) throw new Error("Unauthorized")
 
     await this.connectionRequestModel.findByIdAndDelete(requestId)
+
+    pendoTrack("connection_request_rejected", userId, userId, { profileId: userId, senderId: String(request.fromId), requestId })
 
     return { message: "Connection request rejected successfully" }
   }
@@ -181,8 +188,12 @@ export class ConnectionsService {
     ) {
       throw new Error("Unauthorized")
     }
+    const previousConnectionType = conn.connectionType
     conn.connectionType = connectionType
     await conn.save()
+
+    pendoTrack("connection_type_updated", userId, userId, { profileId: userId, connectionId, previousConnectionType: previousConnectionType || 0, newConnectionType: connectionType })
+
     return { message: "Connection type updated", connectionType }
   }
 
@@ -191,6 +202,9 @@ export class ConnectionsService {
     const token = crypto.randomBytes(16).toString("hex")
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
     await this.inviteTokenModel.create({ token, inviterId, expiresAt })
+
+    pendoTrack("invite_link_created", inviterId, inviterId, { profileId: inviterId, token, expiresAt: expiresAt.toISOString() })
+
     return { token }
   }
 
@@ -216,6 +230,9 @@ export class ConnectionsService {
     }
 
     await this.inviteTokenModel.deleteOne({ _id: record._id })
+
+    pendoTrack("invite_accepted", inviteeId, inviteeId, { profileId: inviteeId, inviterId: String(record.inviterId), connectionId: existing ? "already_connected" : "new" })
+
     return { message: "Connected successfully via invite" }
   }
 
@@ -274,6 +291,13 @@ export class ConnectionsService {
         return { phoneNumber: phone, status: "pending_incoming" as const }
       return { phoneNumber: phone, status: "available" as const }
     })
+
+    const registeredCount = profiles.length
+    const connectedCount = connectedSet.size
+    const availableCount = results.filter(r => r.status === "available").length
+    const notRegisteredCount = results.filter(r => r.status === "not_registered").length
+
+    pendoTrack("contacts_lookup_completed", fromId, fromId, { profileId: fromId, totalContacts: phoneNumbers.length, registeredCount, connectedCount, availableCount, notRegisteredCount })
 
     return { results }
   }

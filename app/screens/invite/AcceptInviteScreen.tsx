@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from "react-native"
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Platform } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { api } from "../../services/api"
 
@@ -23,6 +23,7 @@ export default function AcceptInviteScreen({ route, navigation }: any) {
         const res = await api.post("/connections/accept-invite", { token: tokenFromParams })
         setMessage(res.data?.message || "Connected successfully via invite.")
         setOk(true)
+        pendo.track("invite_accepted", { success: true, platform: Platform.OS })
       } catch (e: any) {
         setMessage(e?.response?.data?.message || "Failed to accept invite.")
         setOk(false)

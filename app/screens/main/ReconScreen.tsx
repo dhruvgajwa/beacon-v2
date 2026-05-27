@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ActivityIndicator, Image } from "react-native"
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, ActivityIndicator, Image, Platform } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Slider from "@react-native-community/slider"
 import * as Location from "expo-location"
@@ -92,6 +92,7 @@ export default function ReconScreen() {
     }
 
     void analytics.track("recon_start", { distance })
+    pendo.track("recon_scan_started", { distance, platform: Platform.OS })
 
     setIsScanning(true)
     setScanComplete(false)
@@ -112,12 +113,14 @@ export default function ReconScreen() {
       setIsLoading(false)
       setScanComplete(true)
       void analytics.track("recon_complete", { results: nearbyUsers.length })
+      pendo.track("recon_scan_completed", { distance, resultsCount: nearbyUsers.length, platform: Platform.OS })
       setIsScanning(false)
     }, 30000)
   }
 
   const sendPing = async (userId: string) => {
     void analytics.track("recon_ping", { userId })
+    pendo.track("ping_sent", { targetUserId: userId, platform: Platform.OS })
 
     try {
       await api.post("/recon/ping", { userId })

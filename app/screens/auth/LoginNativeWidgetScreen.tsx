@@ -37,8 +37,15 @@ function toE164(input: string): { e164: string | null; display: string } {
   }
 }
 
-export default function LoginNativeWidgetScreen() {
+export default function LoginNativeWidgetScreen({ route }: any) {
   const { signIn } = useAuth()
+  const source: string | undefined = route?.params?.source
+
+  useEffect(() => {
+    if (source) {
+      pendo.track("auth_initiated", { source })
+    }
+  }, [source])
   const bridgeRef = useRef<HiddenMsg91Ref>(null)
 
   const [name, setName] = useState("")

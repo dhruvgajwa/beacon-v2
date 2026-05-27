@@ -62,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.removeItem("@Beacon:user")
 
     api.defaults.headers.common["Authorization"] = ""
+    pendo.clearSession()
     setUser(null)
     setIsAuthenticated(false)
   }
